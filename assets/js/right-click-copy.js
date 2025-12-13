@@ -1,120 +1,277 @@
 
-document.addEventListener('contextmenu', function (e) {
-    if (e.shiftKey) return; // Allow default menu if Shift is held
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialize functionality
+    initContextMenu();
+    initCopyWidget();
+});
 
-    e.preventDefault();
+// --- context menu logic (preserved) ---
+function initContextMenu() {
+    document.addEventListener('contextmenu', function (e) {
+        if (e.shiftKey) return; // Allow default menu if Shift is held
 
-    // Remove existing custom menu if any
-    const existingMenu = document.getElementById('custom-ctx-menu');
-    if (existingMenu) existingMenu.remove();
+        e.preventDefault();
 
-    // Smart selection logic
-    const componentSelectors = [
-        '.btn', '.alert', '.badge', '.card',
-        '.form-control', '.form-select', '.form-check',
-        '.dropdown', '.modal', '.offcanvas',
-        'table'
-    ];
+        // Remove existing custom menu if any
+        const existingMenu = document.getElementById('custom-ctx-menu');
+        if (existingMenu) existingMenu.remove();
 
-    let target = e.target;
-    let selectedComponent = null;
+        // Smart selection logic
+        const componentSelectors = [
+            '.btn', '.alert', '.badge', '.card',
+            '.form-control', '.form-select', '.form-check',
+            '.dropdown', '.modal', '.offcanvas',
+            'table', 'nav', 'header', 'footer'
+        ];
 
-    // 1. Check if we clicked directly on or inside a known component type
-    for (const selector of componentSelectors) {
-        const closest = target.closest(selector);
-        if (closest) {
-            selectedComponent = closest;
-            break; // Prioritize the first match (usually innermost)
+        let target = e.target;
+        let selectedComponent = null;
+
+        // 1. Check if we clicked directly on or inside a known component type
+        for (const selector of componentSelectors) {
+            const closest = target.closest(selector);
+            if (closest) {
+                selectedComponent = closest;
+                break; // Prioritize the first match (usually innermost)
+            }
         }
-    }
 
-    // 2. If no specific component found, use the target itself (e.g. text paragraph)
-    if (!selectedComponent) {
-        selectedComponent = target;
-    }
+        // 2. If no specific component found, use the target itself or parent if generic
+        if (!selectedComponent) {
+            selectedComponent = target; // Fallback
+        }
 
-    // Create menu container
+        createContextMenu(e.clientX, e.clientY, selectedComponent);
+    });
+}
+
+function createContextMenu(x, y, component) {
     const menu = document.createElement('div');
     menu.id = 'custom-ctx-menu';
     Object.assign(menu.style, {
         position: 'fixed',
-        top: `${e.clientY}px`,
-        left: `${e.clientX}px`,
+        top: `${y}px`,
+        left: `${x}px`,
         zIndex: '10000',
         backgroundColor: '#fff',
         border: '1px solid #e5e7eb',
         padding: '6px',
         borderRadius: '8px',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-        cursor: 'pointer',
+        cursor: 'default',
         minWidth: '160px',
         fontFamily: "'Inter', sans-serif"
     });
 
-    // Create "Copy HTML Only" item
-    const copyHtmlItem = document.createElement('div');
-    copyHtmlItem.innerText = 'Copy HTML Only';
-    Object.assign(copyHtmlItem.style, {
-        padding: '8px 12px',
-        fontSize: '14px',
-        color: '#374151',
-        borderRadius: '4px',
-        transition: 'background-color 0.2s',
-        marginBottom: '4px'
-    });
-
-    const hoverStyle = (el) => {
-        el.onmouseover = () => {
-            el.style.backgroundColor = '#f3f4f6';
-            el.style.color = '#111827';
+    const createItem = (text, onClick) => {
+        const item = document.createElement('div');
+        item.innerText = text;
+        Object.assign(item.style, {
+            padding: '8px 12px',
+            fontSize: '14px',
+            color: '#374151',
+            borderRadius: '4px',
+            transition: 'background-color 0.2s',
+            cursor: 'pointer',
+            marginBottom: '4px'
+        });
+        item.onmouseover = () => {
+            item.style.backgroundColor = '#f3f4f6';
+            item.style.color = '#111827';
         };
-        el.onmouseout = () => {
-            el.style.backgroundColor = 'transparent';
-            el.style.color = '#374151';
+        item.onmouseout = () => {
+            item.style.backgroundColor = 'transparent';
+            item.style.color = '#374151';
         };
+        item.onclick = onClick;
+        return item;
     };
-    hoverStyle(copyHtmlItem);
 
-    // Create "Copy HTML & CSS" item
-    const copyBothItem = document.createElement('div');
-    copyBothItem.innerText = 'Copy HTML & CSS';
-    Object.assign(copyBothItem.style, {
-        padding: '8px 12px',
-        fontSize: '14px',
-        color: '#374151',
-        borderRadius: '4px',
-        transition: 'background-color 0.2s'
-    });
-    hoverStyle(copyBothItem);
-
-    // Copy HTML Action
-    copyHtmlItem.onclick = () => {
-        const code = selectedComponent.outerHTML;
+    menu.appendChild(createItem('Copy HTML Only', () => {
+        const code = component.outerHTML;
         copyToClipboard(code);
         menu.remove();
-    };
+    }));
 
-    // Copy HTML & CSS Action
-    copyBothItem.onclick = async () => {
-        const html = selectedComponent.outerHTML;
-        const css = await extractCSS(selectedComponent);
-
+    menu.appendChild(createItem('Copy HTML & CSS', async () => {
+        const html = component.outerHTML;
+        const css = await extractCSS(component);
         const output = `/* --- CSS --- */\n${css}\n\n<!-- --- HTML --- -->\n${html}`;
         copyToClipboard(output);
         menu.remove();
-    };
+    }));
+    
+    // Add "Copy Page" option to context menu too
+    menu.appendChild(createItem('Copy Entire Page', () => {
+        const code = document.documentElement.outerHTML;
+        copyToClipboard(code);
+        menu.remove();
+    }));
 
-    menu.appendChild(copyHtmlItem);
-    menu.appendChild(copyBothItem);
     document.body.appendChild(menu);
 
-    // Click outside to dismiss
     const dismiss = () => {
         menu.remove();
         document.removeEventListener('click', dismiss);
     };
     setTimeout(() => document.addEventListener('click', dismiss), 50);
-});
+}
+
+
+// --- New Copy Widget & Selection Mode ---
+
+let isSelectionMode = false;
+let hoveredElement = null;
+let overlay = null;
+
+function initCopyWidget() {
+    // Create the floating widget
+    const widget = document.createElement('div');
+    widget.id = 'copy-helper-widget';
+    Object.assign(widget.style, {
+        position: 'fixed',
+        bottom: '30px',
+        right: '30px',
+        zIndex: '9999',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        alignItems: 'flex-end'
+    });
+
+    // Check if widget already exists (idempotency)
+    if (document.getElementById('copy-helper-widget')) return;
+
+    // Button Generator
+    const createBtn = (icon, text, onClick, isPrimary = false) => {
+        const btn = document.createElement('button');
+        btn.innerHTML = `<span>${icon}</span> <span style="font-size: 14px; font-weight: 500;">${text}</span>`;
+        Object.assign(btn.style, {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 16px',
+            backgroundColor: isPrimary ? '#2563eb' : '#fff',
+            color: isPrimary ? '#fff' : '#374151',
+            border: isPrimary ? 'none' : '1px solid #d1d5db',
+            borderRadius: '9999px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+            cursor: 'pointer',
+            fontFamily: "'Inter', sans-serif",
+            transition: 'all 0.2s',
+            outline: 'none'
+        });
+        
+        btn.onmouseover = () => {
+             btn.style.transform = 'translateY(-2px)';
+             btn.style.boxShadow = '0 6px 8px -1px rgba(0, 0, 0, 0.15)';
+        };
+        btn.onmouseout = () => {
+             btn.style.transform = 'translateY(0)';
+             btn.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+        };
+
+        btn.onclick = onClick;
+        return btn;
+    };
+
+    // Copy Page Button
+    const btnCopyPage = createBtn('📄', 'Copy Whole Page', () => {
+        const fullHtml = document.documentElement.outerHTML;
+        copyToClipboard(fullHtml);
+    });
+
+    // Select Element Toggle
+    const btnSelect = createBtn('🔍', 'Select Element', () => {
+        toggleSelectionMode(btnSelect);
+    }, true); // Primary style
+
+    widget.appendChild(btnCopyPage);
+    widget.appendChild(btnSelect);
+    document.body.appendChild(widget);
+
+    // Create Overlay for highlighting
+    overlay = document.createElement('div');
+    Object.assign(overlay.style, {
+        position: 'fixed',
+        pointerEvents: 'none', // Allow clicks to pass through to the handler
+        border: '3px solid #2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+        zIndex: '9998',
+        display: 'none',
+        transition: 'all 0.1s ease-out',
+        borderRadius: '4px'
+    });
+    document.body.appendChild(overlay);
+}
+
+function toggleSelectionMode(btn) {
+    isSelectionMode = !isSelectionMode;
+
+    if (isSelectionMode) {
+        btn.innerHTML = '<span>❌</span> <span style="font-size: 14px; font-weight: 500;">Stop Selection</span>';
+        btn.style.backgroundColor = '#dc2626'; // Red
+        showToast("Hover and click any element to copy it!");
+        
+        document.addEventListener('mouseover', onHover, true);
+        document.addEventListener('click', onSelectionClick, true);
+    } else {
+        btn.innerHTML = '<span>🔍</span> <span style="font-size: 14px; font-weight: 500;">Select Element</span>';
+        btn.style.backgroundColor = '#2563eb'; // Blue
+        
+        document.removeEventListener('mouseover', onHover, true);
+        document.removeEventListener('click', onSelectionClick, true);
+        overlay.style.display = 'none';
+        hoveredElement = null;
+    }
+}
+
+function onHover(e) {
+    if (!isSelectionMode) return;
+    e.stopPropagation();
+    
+    const target = e.target;
+    // Avoid selecting the helper widget itself
+    if (target.closest('#copy-helper-widget') || target.closest('#copy-toast') || target === overlay) return;
+
+    hoveredElement = target;
+    
+    // Position overlay
+    const rect = target.getBoundingClientRect();
+    Object.assign(overlay.style, {
+        display: 'block',
+        top: rect.top + 'px',
+        left: rect.left + 'px',
+        width: rect.width + 'px',
+        height: rect.height + 'px'
+    });
+}
+
+function onSelectionClick(e) {
+    if (!isSelectionMode) return;
+    
+    // Ignore clicks on widget
+    if (e.target.closest('#copy-helper-widget')) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (hoveredElement) {
+        const code = hoveredElement.outerHTML;
+        copyToClipboard(code);
+        // Optional: flash the overlay to indicate success
+        const originalBorder = overlay.style.border;
+        overlay.style.border = '3px solid #10b981'; // Green
+        overlay.style.backgroundColor = 'rgba(16, 185, 129, 0.2)';
+        
+        setTimeout(() => {
+            overlay.style.border = originalBorder;
+            overlay.style.backgroundColor = 'rgba(37, 99, 235, 0.1)';
+        }, 300);
+    }
+}
+
+// --- Utilities ---
 
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
@@ -143,19 +300,12 @@ async function extractCSS(rootElement) {
                         const selectors = rule.selectorText.split(',');
                         for (const selector of selectors) {
                             const trimmedSelector = selector.trim();
-                            // Basic check: does this selector apply to any of our elements?
-                            // We strip pseudo-classes for the match check to be inclusive
-                            // e.g. .btn:hover matches if .btn is on the element
                             const baseSelector = trimmedSelector.split(':')[0];
 
                             let isMatched = false;
 
-                            // Check match directly on element properties would be hard for pseudos
-                            // So we use element.matches() on the base part of selector
                             try {
                                 if (trimmedSelector.includes(':')) {
-                                    // Remove common pseudos to check if the base element matches
-                                    // This isn't perfect but covers :hover, :focus, ::after etc
                                     const cleanSelector = trimmedSelector.replace(/::?[a-zA-Z0-9-]+/g, '');
                                     if (!cleanSelector.trim()) continue;
 
@@ -166,7 +316,6 @@ async function extractCSS(rootElement) {
                                         }
                                     }
                                 } else {
-                                    // Direct match
                                     for (const el of elements) {
                                         if (el.matches(trimmedSelector)) {
                                             isMatched = true;
@@ -175,7 +324,6 @@ async function extractCSS(rootElement) {
                                     }
                                 }
                             } catch (e) {
-                                // invalid selector or other error
                                 continue;
                             }
 
@@ -212,7 +360,8 @@ function showToast(message) {
     Object.assign(toast.style, {
         position: 'fixed',
         bottom: '20px',
-        right: '20px',
+        left: '50%', // Center bottom
+        transform: 'translateX(-50%)',
         backgroundColor: '#10b981',
         color: '#fff',
         padding: '12px 24px',
